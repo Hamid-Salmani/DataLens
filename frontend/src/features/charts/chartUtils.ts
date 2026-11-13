@@ -14,6 +14,7 @@ export interface ChartConfig {
     stacked: boolean
     colors: string[]
     numberFormat: 'auto' | 'number' | 'integer' | 'percent' | 'currency'
+    goodDirection: 'up' | 'down'
   }
 }
 
@@ -47,6 +48,7 @@ export const defaultChartConfig = (datasetId = ''): ChartConfig => ({
     stacked: false,
     colors: [...chartPalettes.ocean],
     numberFormat: 'auto',
+    goodDirection: 'up',
   },
 })
 

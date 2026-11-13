@@ -2,9 +2,11 @@ using System.Security.Claims;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using DataLens.Api;
 using DataLens.Api.Analytics;
 using DataLens.Api.Auth;
 using DataLens.Api.Extensions;
+using DataLens.Api.Exports;
 using DataLens.Api.Imports;
 using DataLens.Domain.Entities;
 using DataLens.Infrastructure.Data;
@@ -16,7 +18,9 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
 using FluentValidation;
+using QuestPDF.Infrastructure;
 
+QuestPDF.Settings.License = LicenseType.Community;
 var builder = WebApplication.CreateBuilder(args);
 var maximumUploadBytes = builder.Configuration.GetValue<long>("Uploads:MaxFileSizeBytes", 200L * 1024 * 1024);
 if (maximumUploadBytes <= 0)
@@ -39,6 +43,9 @@ builder.Services.AddSingleton<ImportJobCancellation>();
 builder.Services.AddSingleton<ImportFileStore>();
 builder.Services.AddSingleton<IImportJobNotifier, SignalRImportJobNotifier>();
 builder.Services.AddHostedService<ImportJobProcessingService>();
+builder.Services.AddSingleton<ExportJobQueue>();
+builder.Services.AddSingleton<ExportFileStore>();
+builder.Services.AddHostedService<ExportJobProcessingService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
@@ -50,6 +57,7 @@ if (app.Environment.IsDevelopment())
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
+    await DevelopmentDataSeeder.SeedAsync(scope.ServiceProvider, app.Configuration);
 }
 
 app.UseExceptionHandler();
@@ -73,6 +81,8 @@ app.MapHealthChecks("/health");
 app.MapHub<ImportJobHub>("/hubs/jobs").RequireAuthorization();
 app.MapSavedChartEndpoints();
 app.MapDashboardEndpoints();
+app.MapExportEndpoints();
+app.MapAccountEndpoints();
 
 var auth = app.MapGroup("/api/auth");
 auth.MapPost("/register", async (

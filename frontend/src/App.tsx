@@ -1,11 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { BrowserRouter, Link, Navigate, Route, Routes, useParams, useSearchParams } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { HubConnectionBuilder } from '@microsoft/signalr'
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { Select, type SelectOption } from './components/Select'
 import { ThemeProvider, ThemeToggle } from './theme'
+import { AppLayout, PageContainer, PageHeader } from './components/AppLayout'
+import 'react-grid-layout/css/styles.css'
 import {
   api,
   apiBaseUrl,
@@ -18,13 +20,14 @@ import {
   type AuthResponse,
   type ImportErrorPage,
   type ImportJobStatus,
-  type User,
 } from './lib/api'
 import { formatDatasetValue } from './lib/formatters'
 
 const ChartEditorPage = lazy(() => import('./features/charts/ChartPages').then(module => ({ default: module.ChartEditorPage })))
 const ChartLibraryPage = lazy(() => import('./features/charts/ChartPages').then(module => ({ default: module.ChartLibraryPage })))
 const DashboardHomePage = lazy(() => import('./features/dashboard/DashboardHomePage').then(module => ({ default: module.DashboardHomePage })))
+const ExportsPage = lazy(() => import('./features/account/AccountPages').then(module => ({ default: module.ExportsPage })))
+const SettingsPage = lazy(() => import('./features/account/AccountPages').then(module => ({ default: module.SettingsPage })))
 
 function App() {
   const [queryClient] = useState(() => new QueryClient({
@@ -36,16 +39,19 @@ function App() {
         <BrowserRouter>
           <Suspense fallback={<main className="p-8 text-center text-muted" role="status">Loading workspace…</main>}>
             <Routes>
-              <Route path="/" element={<HomePage />} />
               <Route path="/welcome" element={<LandingPage />} />
-              <Route path="/datasets" element={<DashboardPage />} />
-              <Route path="/dashboard" element={<Navigate to="/datasets" replace />} />
-              <Route path="/charts" element={<ChartLibraryPage />} />
-              <Route path="/charts/new" element={<ChartEditorPage />} />
-              <Route path="/charts/:chartId/edit" element={<ChartEditorPage />} />
-              <Route path="/exports" element={<WorkspacePlaceholder title="Exports" />} />
-              <Route path="/settings" element={<WorkspacePlaceholder title="Settings" />} />
-              <Route path="/datasets/:id" element={<DatasetDetailPage />} />
+              <Route path="/auth" element={<AuthRoute />} />
+              <Route path="/" element={<HomeRoute />} />
+              <Route element={<AppLayout />}>
+                <Route path="/datasets" element={<DashboardPage />} />
+                <Route path="/dashboard" element={<Navigate to="/" replace />} />
+                <Route path="/charts" element={<ChartLibraryPage />} />
+                <Route path="/charts/new" element={<ChartEditorPage />} />
+                <Route path="/charts/:chartId/edit" element={<ChartEditorPage />} />
+                <Route path="/exports" element={<ExportsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/datasets/:id" element={<DatasetDetailPage />} />
+              </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
@@ -55,12 +61,16 @@ function App() {
   )
 }
 
-function HomePage() {
-  return sessionStorage.getItem('datalens.accessToken') ? <DashboardHomePage /> : <LandingPage />
+function HomeRoute() {
+  return sessionStorage.getItem('datalens.accessToken')
+    ? <AppLayout><DashboardHomePage /></AppLayout>
+    : <LandingPage />
 }
 
-function WorkspacePlaceholder({ title }: { title: string }) {
-  return <main className="mx-auto w-[calc(100%-2rem)] max-w-[1200px] py-6"><Link className="text-sm font-semibold text-primary" to="/">← Dashboard</Link><h1 className="mt-5 text-3xl font-bold text-foreground">{title}</h1><p className="mt-2 text-muted">This workspace section is not available yet.</p></main>
+function AuthRoute() {
+  return sessionStorage.getItem('datalens.accessToken')
+    ? <Navigate to="/datasets" replace />
+    : <DashboardPage />
 }
 
 function Brand() {
@@ -96,7 +106,7 @@ function LandingPage() {
         </nav>
         <div className="flex items-center gap-2 sm:gap-4">
           <ThemeToggle />
-          <Link className="font-semibold text-primary no-underline" to="/datasets">Open workspace</Link>
+          <Link className="font-semibold text-primary no-underline" to="/auth">Open workspace</Link>
         </div>
       </header>
 
@@ -109,7 +119,7 @@ function LandingPage() {
             SQL Server-backed workspace.
           </p>
           <div className="mt-6 flex flex-wrap gap-2.5">
-            <Link className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-primary px-3.5 py-2.5 font-semibold text-background no-underline hover:brightness-110" to="/datasets">Launch dashboard</Link>
+            <Link className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-transparent bg-primary px-3.5 py-2.5 font-semibold text-background no-underline hover:brightness-110" to="/auth">Launch dashboard</Link>
             <a className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface-raised px-3.5 py-2.5 font-semibold text-foreground no-underline hover:brightness-105" href="#architecture">View architecture</a>
           </div>
           <p className="mt-5 flex items-center gap-2 text-sm text-muted" role="status">
@@ -176,8 +186,8 @@ function LandingPage() {
 }
 
 function DashboardPage() {
+  const navigate = useNavigate()
   const [token, setToken] = useState(() => sessionStorage.getItem('datalens.accessToken'))
-  const [user, setUser] = useState<User | null>(null)
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [loading, setLoading] = useState(() => Boolean(sessionStorage.getItem('datalens.accessToken')))
@@ -188,13 +198,11 @@ function DashboardPage() {
     sessionStorage.setItem('datalens.accessToken', token)
     let active = true
     void Promise.all([
-      api.get<User>('/auth/me'),
       api.get<Dataset[]>('/datasets'),
       api.get<DashboardSummary>('/dashboard/summary'),
     ])
-      .then(([currentUser, currentDatasets, currentSummary]) => {
+      .then(([currentDatasets, currentSummary]) => {
         if (!active) return
-        setUser(currentUser)
         setDatasets(currentDatasets)
         setSummary(currentSummary)
         setError('')
@@ -219,18 +227,10 @@ function DashboardPage() {
 
   const handleAuthenticated = (response: AuthResponse) => {
     sessionStorage.setItem('datalens.accessToken', response.accessToken)
-    setUser(response.user)
     setLoading(true)
     setToken(response.accessToken)
     setError('')
-  }
-
-  const signOut = () => {
-    sessionStorage.removeItem('datalens.accessToken')
-    setToken(null)
-    setUser(null)
-    setDatasets([])
-    setSummary(null)
+    navigate('/datasets', { replace: true })
   }
 
   const refreshWorkspace = async () => {
@@ -254,32 +254,16 @@ function DashboardPage() {
 
   if (!token) {
     return (
-      <main className="mx-auto w-[calc(100%-2rem)] max-w-[1200px] py-6 pb-16">
+      <PageContainer>
         <header className="flex flex-nowrap items-center justify-between gap-2 border-b border-border/75 py-2 pb-5 sm:gap-4"><Brand /><div className="flex shrink-0 items-center gap-2 sm:gap-4"><ThemeToggle /><Link className="whitespace-nowrap text-sm font-semibold text-primary no-underline sm:text-base" to="/">Back to home</Link></div></header>
         <AuthPanel onAuthenticated={handleAuthenticated} message={error} />
-      </main>
+      </PageContainer>
     )
   }
 
   return (
-    <main className="mx-auto w-[calc(100%-2rem)] max-w-[1200px] py-6 pb-16">
-      <header className="flex flex-nowrap items-center justify-between gap-2 border-b border-border/75 py-2 pb-5 sm:gap-4">
-        <Brand />
-        <nav className="flex items-center gap-2 text-sm"><Link className="rounded px-2 py-1 font-semibold text-muted no-underline hover:text-primary" to="/">Dashboard</Link><Link className="rounded px-2 py-1 font-semibold text-primary no-underline" to="/datasets">Datasets</Link><Link className="rounded px-2 py-1 font-semibold text-muted no-underline hover:text-primary" to="/charts">Charts</Link></nav>
-        <div className="flex items-center gap-4 text-sm text-muted">
-          <span className="hidden sm:inline">{user ? `${user.firstName} ${user.lastName}` : 'Loading account…'}</span>
-          <ThemeToggle />
-          <button className="min-h-9 rounded-lg border border-border bg-surface-raised px-2.5 py-1.5 text-xs font-semibold text-foreground hover:brightness-105" type="button" onClick={signOut}>Sign out</button>
-        </div>
-      </header>
-      <div className="my-7 flex flex-col items-start justify-between gap-5 lg:flex-row">
-        <div>
-          <p className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-primary">Your private workspace</p>
-          <h1 className="m-0 text-3xl font-bold tracking-tight text-foreground">Data overview</h1>
-          <p className="mt-2 text-muted">Upload and inspect CSV datasets stored in your SQL Server database.</p>
-        </div>
-        <UploadPanel onUploaded={refreshWorkspace} onError={setError} />
-      </div>
+    <PageContainer>
+      <PageHeader eyebrow="Your private workspace" title="Datasets" description="Upload and inspect CSV datasets stored in your SQL Server database." actions={<UploadPanel onUploaded={refreshWorkspace} onError={setError} />} />
 
       {error && <div className="my-3 rounded-lg border border-danger/50 bg-danger/10 px-3.5 py-3 text-danger" role="alert">{error}</div>}
 
@@ -327,7 +311,7 @@ function DashboardPage() {
         )}
       </section>
 
-    </main>
+    </PageContainer>
   )
 }
 
@@ -425,11 +409,7 @@ function DatasetDetailPage() {
   const pageCount = preview ? Math.ceil(preview.totalRows / pageSize) : 0
 
   return (
-    <main className="mx-auto w-[calc(100%-2rem)] max-w-[1200px] py-6 pb-16">
-      <header className="flex items-center justify-between gap-4 border-b border-border/75 py-2 pb-5">
-        <Brand />
-        <div className="flex shrink-0 items-center gap-2 sm:gap-4"><ThemeToggle /><Link className="whitespace-nowrap text-sm font-semibold text-primary no-underline sm:text-base" to="/datasets">Back to datasets</Link></div>
-      </header>
+    <PageContainer>
     {(error || datasetQuery.error || previewQuery.error) && <div className="my-3 rounded-lg border border-danger/50 bg-danger/10 px-3.5 py-3 text-danger" role="alert">
         {error || (datasetQuery.error instanceof Error ? datasetQuery.error.message : previewQuery.error instanceof Error ? previewQuery.error.message : '')}
       </div>}
@@ -442,18 +422,15 @@ function DatasetDetailPage() {
         ) : <div className="grid min-h-[120px] place-content-center justify-items-center gap-2 text-center text-muted">Loading dataset…</div>
       ) : (
         <>
-          <section className="my-6 flex flex-col items-start justify-between gap-5 sm:flex-row">
-            <div>
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.12em] text-primary">Dataset details</p>
-              <h1 className="m-0 text-3xl font-bold tracking-tight text-foreground">{dataset.name}</h1>
-              <p className="mt-2 text-muted">{dataset.fileName} · created {new Date(dataset.createdAt).toLocaleDateString()}</p>
-            </div>
+          <PageHeader eyebrow="Dataset details" title={dataset.name} description={`${dataset.fileName} · created ${new Date(dataset.createdAt).toLocaleDateString()}`}
+            actions={<>
             <div className="flex flex-wrap gap-2.5 text-xs text-muted">
               <span className="inline-flex gap-1 rounded-lg border border-border bg-surface px-3 py-2"><strong className="text-foreground">{dataset.rowCount.toLocaleString()}</strong> rows</span>
               <span className="inline-flex gap-1 rounded-lg border border-border bg-surface px-3 py-2"><strong className="text-foreground">{columns.length}</strong> columns</span>
               {dataset.skippedRows > 0 && <span className="inline-flex gap-1 rounded-lg border border-border bg-surface px-3 py-2"><strong className="text-foreground">{dataset.skippedRows.toLocaleString()}</strong> skipped</span>}
             </div>
-          </section>
+            <Link className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-foreground no-underline" to="/datasets">All datasets</Link>
+            </>} />
 
           <section className="mt-4 rounded-xl border border-border bg-surface p-5" aria-labelledby="schema-heading">
             <div className="mb-4 flex items-center justify-between gap-4">
@@ -561,7 +538,7 @@ function DatasetDetailPage() {
           </section>
         </>
       )}
-    </main>
+    </PageContainer>
   )
 }
 
@@ -1052,7 +1029,7 @@ function UploadPanel({ onUploaded, onError }: { onUploaded: () => Promise<void>;
           }} />
         </label>
         <label className="grid gap-1.5 text-left text-xs font-semibold text-muted">Dataset name<input className="min-h-10 w-full rounded-lg border border-border bg-surface px-3 py-2 text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25" value={name} onChange={(event) => setName(event.target.value)} maxLength={200} placeholder="e.g. Monthly sales" /></label>
-        <button className="inline-flex min-h-10 items-center justify-center rounded-lg border border-transparent bg-primary px-3.5 py-2.5 font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={!file || busy || Boolean(jobIsActive)}>{busy ? `Uploading ${progress ?? 0}%` : 'Import CSV'}</button>
+        <button className="inline-flex min-h-10 whitespace-nowrap items-center justify-center rounded-lg border border-transparent bg-primary px-3.5 py-2 font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50" type="submit" disabled={!file || busy || Boolean(jobIsActive)}>{busy ? `Uploading ${progress ?? 0}%` : 'Import CSV'}</button>
         {busy && <progress className="col-span-full w-full accent-success" value={progress ?? 0} max={100} aria-label="Upload progress" />}
         <span className="col-span-full text-xs text-muted">CSV only · up to 200 MB</span>
         {fileError && <span className="col-span-full text-sm text-danger" role="alert">{fileError}</span>}

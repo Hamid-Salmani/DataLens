@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Moon, Sun } from 'lucide-react'
 
 type Theme = 'light' | 'dark'
 interface ThemeContextValue {
@@ -48,13 +49,13 @@ export function ThemeToggle() {
   if (!context) throw new Error('ThemeToggle must be used within ThemeProvider.')
   return (
     <button
-      className="inline-flex min-h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-border bg-surface-raised px-2 py-1.5 text-xs font-semibold text-foreground hover:brightness-105 sm:px-2.5"
+      className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface-raised text-foreground hover:brightness-105"
       type="button"
       aria-label={`Switch to ${context.theme === 'dark' ? 'light' : 'dark'} theme`}
+      title={`Switch to ${context.theme === 'dark' ? 'light' : 'dark'} theme`}
       onClick={context.toggleTheme}
     >
-      <span className="sm:hidden" aria-hidden="true">{context.theme === 'dark' ? '☼' : '☾'}</span>
-      <span className="hidden sm:inline">Switch to {context.theme === 'dark' ? 'light' : 'dark'} theme</span>
+      {context.theme === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
     </button>
   )
 }

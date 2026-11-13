@@ -14,6 +14,7 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<DatasetColumn> DatasetColumns => Set<DatasetColumn>();
     public DbSet<ImportError> ImportErrors => Set<ImportError>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
+    public DbSet<ExportJob> ExportJobs => Set<ExportJob>();
     public DbSet<SavedReport> SavedReports => Set<SavedReport>();
     public DbSet<SavedChart> SavedCharts => Set<SavedChart>();
     public DbSet<Dashboard> Dashboards => Set<Dashboard>();
@@ -91,6 +92,20 @@ public class AppDbContext : IdentityDbContext<AppUser>
             entity.Property(x => x.ErrorMessage).HasMaxLength(1000);
             entity.HasIndex(x => x.DatasetId);
             entity.HasIndex(x => x.Status);
+        });
+
+        modelBuilder.Entity<ExportJob>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OwnerId).HasMaxLength(450).IsRequired();
+            entity.Property(x => x.TargetName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.FileName).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.ErrorMessage).HasMaxLength(1000);
+            entity.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Dataset).WithMany().HasForeignKey(x => x.DatasetId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.SavedChart).WithMany().HasForeignKey(x => x.SavedChartId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(x => x.Dashboard).WithMany().HasForeignKey(x => x.DashboardId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(x => new { x.OwnerId, x.CreatedAt });
         });
 
         modelBuilder.Entity<SavedReport>(entity =>

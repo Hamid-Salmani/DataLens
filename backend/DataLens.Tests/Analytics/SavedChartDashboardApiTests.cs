@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace DataLens.Tests.Analytics;
 
@@ -35,6 +36,10 @@ public sealed class SavedChartDashboardApiTests(TestDatabaseFixture fixture) : I
             .Where(item => item.CreatedById == owner.User.Id).Select(item => item.Id).SingleAsync();
         var otherDatasetId = await initialize.Datasets.AsNoTracking()
             .Where(item => item.CreatedById == other.User.Id).Select(item => item.Id).SingleAsync();
+        Assert.Contains(datasetId.ToString(), await ownerClient.GetStringAsync("/api/datasets"), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(datasetId.ToString(), await otherClient.GetStringAsync("/api/datasets"), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/datasets/{datasetId}")).StatusCode);
+
         var chartRequest = CreateChart(datasetId, "Owner chart");
         var chartResponse = await ownerClient.PostAsJsonAsync("/api/charts", chartRequest);
         Assert.Equal(HttpStatusCode.Created, chartResponse.StatusCode);
@@ -46,12 +51,14 @@ public sealed class SavedChartDashboardApiTests(TestDatabaseFixture fixture) : I
         Assert.Equal(HttpStatusCode.Created, otherChartResponse.StatusCode);
         var otherChart = await otherChartResponse.Content.ReadFromJsonAsync<SavedChartResponse>();
         Assert.NotNull(otherChart);
+        Assert.DoesNotContain(chart.Id.ToString(), await otherClient.GetStringAsync("/api/charts"), StringComparison.OrdinalIgnoreCase);
 
         var dashboardResponse = await ownerClient.PostAsJsonAsync("/api/dashboards", new DashboardRequest("Operations"));
         Assert.Equal(HttpStatusCode.Created, dashboardResponse.StatusCode);
         var dashboard = await dashboardResponse.Content.ReadFromJsonAsync<DashboardResponse>();
         Assert.NotNull(dashboard);
         Assert.Equal(HttpStatusCode.NotFound, (await otherClient.GetAsync($"/api/dashboards/{dashboard.Id}")).StatusCode);
+        Assert.DoesNotContain(dashboard.Id.ToString(), await otherClient.GetStringAsync("/api/dashboards"), StringComparison.OrdinalIgnoreCase);
 
         var crossOwnerLayout = new DashboardLayoutRequest(
             dashboard.Version,
@@ -162,6 +169,7 @@ internal sealed class DataLensApiFactory(string connectionString) : WebApplicati
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureLogging(logging => logging.AddConsole().SetMinimumLevel(LogLevel.Error));
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:DefaultConnection"] = connectionString,

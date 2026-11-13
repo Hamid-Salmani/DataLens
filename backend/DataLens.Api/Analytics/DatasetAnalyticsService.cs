@@ -30,6 +30,77 @@ public sealed class DatasetAnalyticsService(
         CancellationToken cancellationToken)
         => (await ExecuteWithDiagnosticsAsync(dataset, request, cancellationToken)).Result;
 
+    public async Task<AnalyticsExecutionResult> ExecuteForChartAsync(
+        Dataset dataset,
+        DatasetAnalyticsRequest request,
+        AnalyticsDateRange? dateRange,
+        bool includeComparison,
+        CancellationToken cancellationToken)
+    {
+        var dateColumn = request.ComparisonDatePosition is int configuredPosition
+            ? dataset.Columns.SingleOrDefault(column => column.Position == configuredPosition)
+            : dataset.Columns.OrderBy(column => column.Position)
+                .FirstOrDefault(column => column.TypeName is "date" or "datetime");
+        if (dateColumn?.TypeName is not ("date" or "datetime"))
+        {
+            var unfiltered = await ExecuteWithDiagnosticsAsync(dataset, request, cancellationToken);
+            return unfiltered with { DateFilterApplicable = false };
+        }
+
+        if (dateRange is null)
+        {
+            var unfiltered = await ExecuteWithDiagnosticsAsync(dataset, request, cancellationToken);
+            return unfiltered with { DateFilterApplicable = true };
+        }
+
+        if (dateRange.From > dateRange.To)
+        {
+            throw new InvalidDataException("The date range start must not be after its end.");
+        }
+
+        var currentRequest = AddDateRange(request, dateColumn.Position, dateRange.From, dateRange.To);
+        var current = await ExecuteWithDiagnosticsAsync(dataset, currentRequest, cancellationToken);
+        if (!includeComparison)
+        {
+            return current with { DateFilterApplicable = true };
+        }
+
+        var periodLength = dateRange.To.DayNumber - dateRange.From.DayNumber + 1;
+        var previousTo = dateRange.From.AddDays(-1);
+        var previousFrom = previousTo.AddDays(-(periodLength - 1));
+        var previous = await ExecuteWithDiagnosticsAsync(
+            dataset,
+            AddDateRange(request, dateColumn.Position, previousFrom, previousTo),
+            cancellationToken);
+        var sparklineRequest = currentRequest with
+        {
+            GroupByPosition = null,
+            GroupByPositions = [],
+            TimeBucketPosition = dateColumn.Position,
+            TimeBucket = "day",
+            TopN = Math.Min(500, periodLength),
+            SortBy = "groupValue",
+            SortDirection = "asc"
+        };
+        var sparkline = await ExecuteWithDiagnosticsAsync(dataset, sparklineRequest, cancellationToken);
+        var currentValue = SumMetric(current.Result);
+        var previousValue = SumMetric(previous.Result);
+        var percentChange = previousValue == 0
+            ? currentValue == 0 ? 0m : (decimal?)null
+            : (currentValue - previousValue) / Math.Abs(previousValue) * 100m;
+        var values = sparkline.Result.Rows
+            .Select(row => row.TryGetValue("m0", out var value) && value is not null
+                ? Convert.ToDecimal(value, CultureInfo.InvariantCulture)
+                : 0m)
+            .ToArray();
+        return current with
+        {
+            DateFilterApplicable = true,
+            DurationMilliseconds = current.DurationMilliseconds + previous.DurationMilliseconds + sparkline.DurationMilliseconds,
+            Comparison = new KpiComparison(previousValue, percentChange, values)
+        };
+    }
+
     public async Task<AnalyticsExecutionResult> ExecuteWithDiagnosticsAsync(
         Dataset dataset,
         DatasetAnalyticsRequest request,
@@ -112,6 +183,12 @@ public sealed class DatasetAnalyticsService(
         else if (request.TimeBucket is not null)
         {
             throw new InvalidDataException("A time bucket requires a date column.");
+        }
+
+        if (request.ComparisonDatePosition is int comparisonPosition &&
+            FindColumn(columns, comparisonPosition).TypeName is not ("date" or "datetime"))
+        {
+            throw new InvalidDataException("The comparison date column must be a date or datetime column.");
         }
 
         var groupExpressions = groupColumns
@@ -264,6 +341,26 @@ public sealed class DatasetAnalyticsService(
             _ => throw new InvalidDataException("Choose a supported time bucket.")
         };
 
+    private static DatasetAnalyticsRequest AddDateRange(
+        DatasetAnalyticsRequest request,
+        int position,
+        DateOnly from,
+        DateOnly to)
+    {
+        var filters = (request.Filters ?? [])
+            .Where(filter => filter.ColumnPosition != position ||
+                filter.Operator is not ("gte" or "gt" or "lt" or "lte"))
+            .Append(new AnalyticsFilter(position, "gte", from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)))
+            .Append(new AnalyticsFilter(position, "lt", to.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)))
+            .ToArray();
+        return request with { Filters = filters };
+    }
+
+    private static decimal SumMetric(DatasetAnalyticsResult result) =>
+        result.Rows.Sum(row => row.TryGetValue("m0", out var value) && value is not null
+            ? Convert.ToDecimal(value, CultureInfo.InvariantCulture)
+            : 0m);
+
     private static DatasetColumn FindColumn(IReadOnlyCollection<DatasetColumn> columns, int position) =>
         columns.SingleOrDefault(column => column.Position == position)
         ?? throw new InvalidDataException("Choose a column from this dataset.");
@@ -316,4 +413,6 @@ public sealed class DatasetAnalyticsService(
 public sealed record AnalyticsExecutionResult(
     DatasetAnalyticsResult Result,
     string CacheStatus,
-    double DurationMilliseconds);
+    double DurationMilliseconds,
+    bool DateFilterApplicable = false,
+    KpiComparison? Comparison = null);

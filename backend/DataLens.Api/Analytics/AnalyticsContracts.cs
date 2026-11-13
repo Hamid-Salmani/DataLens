@@ -9,7 +9,8 @@ public sealed record DatasetAnalyticsRequest(
     string? SortBy = null,
     string SortDirection = "desc",
     int? TimeBucketPosition = null,
-    string? TimeBucket = null);
+    string? TimeBucket = null,
+    int? ComparisonDatePosition = null);
 
 public sealed record AnalyticsMetric(string Function, int? ColumnPosition);
 
@@ -48,7 +49,8 @@ public sealed record ChartVisualOptions(
     bool ShowLegend = true,
     bool Stacked = false,
     string[]? Colors = null,
-    string NumberFormat = "auto");
+    string NumberFormat = "auto",
+    string GoodDirection = "up");
 
 public sealed record SavedChartResponse(
     Guid Id,
@@ -63,11 +65,19 @@ public sealed record SavedChartResponse(
     DateTime UpdatedAt,
     string Version);
 
-public sealed record ChartPreviewRequest(Guid DatasetId, string ChartType, DatasetAnalyticsRequest Query);
+public sealed record AnalyticsDateRange(DateOnly From, DateOnly To);
+public sealed record KpiComparison(decimal? PreviousValue, decimal? PercentChange, decimal[] Sparkline);
+public sealed record ChartPreviewRequest(
+    Guid DatasetId,
+    string ChartType,
+    DatasetAnalyticsRequest Query,
+    AnalyticsDateRange? DateRange = null);
 public sealed record ChartPreviewResponse(
     DatasetAnalyticsResult Result,
     string CacheStatus,
-    double DurationMilliseconds);
+    double DurationMilliseconds,
+    bool DateFilterApplicable = false,
+    KpiComparison? Comparison = null);
 
 public sealed record DashboardRequest(string? Name);
 public sealed record DashboardWidgetRequest(Guid SavedChartId, int X, int Y, int Width, int Height, string? TitleOverride = null);

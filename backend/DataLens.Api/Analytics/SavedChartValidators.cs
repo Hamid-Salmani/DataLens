@@ -20,6 +20,9 @@ public sealed class SavedChartRequestValidator : AbstractValidator<SavedChartReq
         RuleFor(request => request.Options!.NumberFormat)
             .Must(format => format is "auto" or "number" or "integer" or "percent" or "currency")
             .When(request => request.Options is not null);
+        RuleFor(request => request.Options!.GoodDirection)
+            .Must(direction => direction is "up" or "down")
+            .When(request => request.Options is not null);
     }
 }
 

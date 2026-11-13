@@ -260,6 +260,74 @@ namespace DataLens.Infrastructure.Data.Migrations
                     b.ToTable("DatasetColumns");
                 });
 
+            modelBuilder.Entity("DataLens.Domain.Entities.ExportJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DashboardId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("DatasetId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateOnly?>("FromDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SavedChartId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TargetName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateOnly?>("ToDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DashboardId");
+
+                    b.HasIndex("DatasetId");
+
+                    b.HasIndex("SavedChartId");
+
+                    b.HasIndex("OwnerId", "CreatedAt");
+
+                    b.ToTable("ExportJobs");
+                });
+
             modelBuilder.Entity("DataLens.Domain.Entities.ImportError", b =>
                 {
                     b.Property<Guid>("Id")
@@ -620,6 +688,38 @@ namespace DataLens.Infrastructure.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Dataset");
+                });
+
+            modelBuilder.Entity("DataLens.Domain.Entities.ExportJob", b =>
+                {
+                    b.HasOne("DataLens.Domain.Entities.Dashboard", "Dashboard")
+                        .WithMany()
+                        .HasForeignKey("DashboardId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("DataLens.Domain.Entities.Dataset", "Dataset")
+                        .WithMany()
+                        .HasForeignKey("DatasetId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("DataLens.Domain.Entities.AppUser", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("DataLens.Domain.Entities.SavedChart", "SavedChart")
+                        .WithMany()
+                        .HasForeignKey("SavedChartId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Dashboard");
+
+                    b.Navigation("Dataset");
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("SavedChart");
                 });
 
             modelBuilder.Entity("DataLens.Domain.Entities.ImportError", b =>

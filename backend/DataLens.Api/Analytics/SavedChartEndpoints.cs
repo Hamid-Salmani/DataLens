@@ -109,6 +109,10 @@ public static class SavedChartEndpoints
             if (chart is null) return Results.NotFound();
             var widgets = await db.DashboardWidgets.Where(item => item.SavedChartId == chart.Id).ToListAsync(cancellationToken);
             db.DashboardWidgets.RemoveRange(widgets);
+            var linkedExports = await db.ExportJobs
+                .Where(item => item.SavedChartId == chart.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var export in linkedExports) export.SavedChartId = null;
             db.SavedCharts.Remove(chart);
             await db.SaveChangesAsync(cancellationToken);
             return Results.NoContent();
@@ -130,11 +134,13 @@ public static class SavedChartEndpoints
         var dataset = await db.Datasets.AsNoTracking().Include(item => item.Columns)
             .SingleOrDefaultAsync(item => item.Id == request.DatasetId && item.CreatedById == userId, cancellationToken);
         if (dataset is null) return Results.NotFound();
-        return await RunAnalyticsAsync(dataset, request.Query, analytics, response, cancellationToken);
+        return await RunAnalyticsAsync(dataset, request.Query, request.ChartType, request.DateRange, analytics, response, cancellationToken);
     }
 
     private static async Task<IResult> RunSavedChartAsync(
         Guid id,
+        DateOnly? from,
+        DateOnly? to,
         ClaimsPrincipal principal,
         AppDbContext db,
         DatasetAnalyticsService analytics,
@@ -148,12 +154,23 @@ public static class SavedChartEndpoints
         var query = JsonSerializer.Deserialize<DatasetAnalyticsRequest>(chart.QueryJson);
         return query is null
             ? Results.Problem("The saved chart query is invalid.", statusCode: StatusCodes.Status422UnprocessableEntity)
-            : await RunAnalyticsAsync(chart.Dataset, query, analytics, response, cancellationToken);
+            : from.HasValue != to.HasValue
+                ? Results.ValidationProblem(new Dictionary<string, string[]> { ["dateRange"] = ["Both from and to dates are required."] })
+                : await RunAnalyticsAsync(
+                    chart.Dataset,
+                    query,
+                    chart.ChartType,
+                    from.HasValue ? new AnalyticsDateRange(from.Value, to!.Value) : null,
+                    analytics,
+                    response,
+                    cancellationToken);
     }
 
     private static async Task<IResult> RunAnalyticsAsync(
         Dataset dataset,
         DatasetAnalyticsRequest query,
+        string chartType,
+        AnalyticsDateRange? dateRange,
         DatasetAnalyticsService analytics,
         HttpResponse response,
         CancellationToken cancellationToken)
@@ -161,12 +178,17 @@ public static class SavedChartEndpoints
         try
         {
             var stopwatch = Stopwatch.StartNew();
-            var result = await analytics.ExecuteWithDiagnosticsAsync(dataset, query, cancellationToken);
+            var result = await analytics.ExecuteForChartAsync(dataset, query, dateRange, chartType == "kpi", cancellationToken);
             stopwatch.Stop();
             response.Headers.CacheControl = "private, max-age=30";
             response.Headers["X-Analytics-Cache"] = result.CacheStatus;
             response.Headers["X-Analytics-Duration-Ms"] = stopwatch.Elapsed.TotalMilliseconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
-            return Results.Ok(new ChartPreviewResponse(result.Result, result.CacheStatus, stopwatch.Elapsed.TotalMilliseconds));
+            return Results.Ok(new ChartPreviewResponse(
+                result.Result,
+                result.CacheStatus,
+                stopwatch.Elapsed.TotalMilliseconds,
+                result.DateFilterApplicable,
+                result.Comparison));
         }
         catch (InvalidDataException exception)
         {

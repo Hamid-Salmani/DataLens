@@ -113,3 +113,57 @@ input:focus-visible {
   outline: 3px solid rgb(var(--color-primary) / 0.8);
   outline-offset: 2px;
 }
+
+.dashboard-grid-wrap .react-grid-item {
+  min-width: 0;
+  min-height: 0;
+}
+
+.dashboard-grid-wrap .react-grid-placeholder {
+  border: 2px dashed rgb(var(--color-primary));
+  border-radius: 0.75rem;
+  background: rgb(var(--color-primary) / 0.12);
+  opacity: 1;
+}
+
+.dashboard-grid-wrap .react-resizable-handle {
+  z-index: 4;
+  opacity: 1;
+  touch-action: none;
+}
+
+.dashboard-grid-wrap .react-resizable-handle::after {
+  border-color: rgb(var(--color-primary));
+}
+
+.dashboard-grid-wrap .react-resizable-handle-e,
+.dashboard-grid-wrap .react-resizable-handle-s {
+  background: rgb(var(--color-primary) / 0.12);
+  border-radius: 999px;
+}
+
+.dashboard-grid-wrap .react-resizable-handle-e {
+  width: 7px;
+  right: 2px;
+  top: 35%;
+  bottom: 35%;
+}
+
+.dashboard-grid-wrap .react-resizable-handle-s {
+  height: 7px;
+  left: 35%;
+  right: 35%;
+  bottom: 2px;
+}
+
+.dashboard-grid-wrap .react-resizable-handle-se {
+  width: 18px;
+  height: 18px;
+  right: 2px;
+  bottom: 2px;
+}
+
+.dashboard-grid-wrap .react-resizable-handle-e::after,
+.dashboard-grid-wrap .react-resizable-handle-s::after {
+  display: none;
+}

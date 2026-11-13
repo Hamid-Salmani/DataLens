@@ -127,7 +127,8 @@ describe('dashboard launch flow', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Customers' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Back to datasets' })).toHaveClass('whitespace-nowrap')
+    expect(screen.getByTestId('app-layout-header')).toBeInTheDocument()
+    expect(document.querySelectorAll('header')).toHaveLength(1)
     expect(await screen.findByText('Acme')).toBeInTheDocument()
     const previewCell = screen.getByRole('cell', { name: 'Acme' })
     expect(previewCell.closest('tbody')).toBeInTheDocument()
@@ -168,7 +169,7 @@ describe('dashboard launch flow', () => {
   it('stacks dataset metadata and actions in the mobile workspace row layout', async () => {
     const datasetId = '8a0d5208-c111-42ca-9fe5-0537a1b76c01'
     sessionStorage.setItem('datalens.accessToken', 'test-token')
-    window.history.pushState({}, '', '/dashboard')
+    window.history.pushState({}, '', '/datasets')
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input)
       if (url.endsWith('/auth/me')) {
@@ -198,6 +199,7 @@ describe('dashboard launch flow', () => {
     render(<App />)
 
     const title = await screen.findByText('Quarterly customer revenue')
+    expect(screen.getByTestId('app-layout-header')).toBeInTheDocument()
     const row = title.closest('article')
     expect(row).toHaveClass('grid-cols-[42px_minmax(0,1fr)]', 'sm:flex')
     expect(screen.getByText(/quarterly-customer-revenue-export\.csv/).closest('article')).toBe(row)

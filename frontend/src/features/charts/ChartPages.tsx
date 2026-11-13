@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Select, type SelectOption } from '../../components/Select'
-import { ThemeToggle } from '../../theme'
+import { PageContainer, PageHeader } from '../../components/AppLayout'
 import {
   api,
   chartTypes,
@@ -11,6 +11,7 @@ import {
   type Dataset,
   type DatasetAnalyticsRequest,
   type DatasetColumn,
+  type ExportJob,
   type SavedChart,
 } from '../../lib/api'
 import { ChartPreviewCard } from './ChartVisualization'
@@ -39,24 +40,6 @@ const chartLabels: Record<ChartType, string> = {
 
 const EMPTY_COLUMNS: DatasetColumn[] = []
 
-function ProductNav({ active }: { active: 'dashboard' | 'datasets' | 'charts' }) {
-  return (
-    <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border/75 pb-4">
-      <Link to="/" className="text-lg font-bold text-foreground no-underline">DataLens</Link>
-      <nav className="flex flex-wrap items-center gap-2" aria-label="Workspace navigation">
-        {([
-          ['dashboard', 'Dashboard', '/'],
-          ['datasets', 'Datasets', '/datasets'],
-          ['charts', 'Charts', '/charts'],
-        ] as const).map(([key, label, href]) => (
-          <Link className={`rounded-lg px-3 py-2 text-sm font-semibold no-underline ${active === key ? 'bg-primary/10 text-primary' : 'text-muted hover:bg-surface-raised hover:text-foreground'}`} to={href} key={key} aria-current={active === key ? 'page' : undefined}>{label}</Link>
-        ))}
-        <ThemeToggle />
-      </nav>
-    </header>
-  )
-}
-
 export function ChartLibraryPage() {
   const [search, setSearch] = useState('')
   const [datasetFilter, setDatasetFilter] = useState('')
@@ -69,6 +52,8 @@ export function ChartLibraryPage() {
   const datasets = datasetQuery.data ?? []
   const navigate = useNavigate()
   const [error, setError] = useState('')
+  const [exportMessage, setExportMessage] = useState('')
+  const [exportingChartId, setExportingChartId] = useState('')
 
   const duplicate = async (chart: SavedChart) => {
     try {
@@ -91,15 +76,27 @@ export function ChartLibraryPage() {
     }
   }
 
+  const exportPdf = async (chart: SavedChart) => {
+    setError('')
+    setExportMessage('')
+    setExportingChartId(chart.id)
+    try {
+      await api.post<ExportJob>(`/exports/charts/${chart.id}`, {})
+      setExportMessage(`PDF export queued for ${chart.name}.`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not start the PDF export.')
+    } finally {
+      setExportingChartId('')
+    }
+  }
+
   if (!sessionStorage.getItem('datalens.accessToken')) return <Navigate to="/datasets" replace />
   return (
-    <main className="mx-auto w-[calc(100%-2rem)] max-w-[1200px] py-6 pb-16">
-      <ProductNav active="charts" />
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div><p className="mb-2 text-xs font-bold uppercase tracking-wider text-primary">Your library</p><h1 className="m-0 text-3xl font-bold text-foreground">Charts</h1><p className="mt-2 text-muted">Saved visualizations across all your datasets.</p></div>
-        <Link className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-background no-underline" to="/charts/new">Create chart</Link>
-      </div>
+    <PageContainer>
+      <PageHeader eyebrow="Your library" title="Charts" description="Saved visualizations across all your datasets."
+        actions={<Link className="rounded-lg bg-primary px-4 py-2.5 font-semibold text-background no-underline" to="/charts/new">Create chart</Link>} />
       {error && <p className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger" role="alert">{error}</p>}
+      {exportMessage && <p className="rounded-lg border border-success/40 bg-success/10 p-3 text-success" role="status">{exportMessage} <Link className="font-semibold underline" to="/exports">View exports</Link></p>}
       <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_260px]">
         <label className="grid gap-1 text-xs font-semibold text-muted">Search charts
           <input className="min-h-10 rounded-lg border border-border bg-surface px-3 text-foreground" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search by chart name" />
@@ -117,12 +114,13 @@ export function ChartLibraryPage() {
                 <SavedChartMiniPreview chart={chart} />
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-background no-underline" to={`/charts/${chart.id}/edit`}>Edit</Link>
+                  <button className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-50" type="button" disabled={exportingChartId === chart.id} onClick={() => void exportPdf(chart)}>{exportingChartId === chart.id ? 'Queuing PDF…' : 'Export PDF'}</button>
                   <button className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs font-semibold text-foreground" type="button" onClick={() => void duplicate(chart)}>Duplicate</button>
                   <button className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-danger" type="button" onClick={() => void remove(chart)}>Delete</button>
                 </div>
               </article>)}
             </div>}
-    </main>
+    </PageContainer>
   )
 }
 
@@ -245,9 +243,11 @@ function ChartEditorForm({ chartId, initialConfig }: { chartId?: string; initial
     updateQuery({ metrics: config.query.metrics.map((item, current) => current === index ? metric : item) })
 
   return (
-    <main className="mx-auto w-[calc(100%-2rem)] max-w-[1440px] py-6 pb-16">
-      <ProductNav active="charts" />
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><p className="mb-1 text-xs font-bold uppercase tracking-wider text-primary">Chart builder</p><h1 className="m-0 text-3xl font-bold text-foreground">{chartId ? 'Edit chart' : 'Create chart'}</h1></div><div className="flex gap-2"><Link className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-foreground no-underline" to="/charts">Cancel</Link><button className="rounded-lg bg-primary px-4 py-2 font-semibold text-background disabled:opacity-50" type="button" disabled={saving || !config.datasetId} onClick={() => void save()}>{saving ? 'Saving…' : 'Save chart'}</button></div></div>
+    <PageContainer>
+      <PageHeader eyebrow="Chart builder" title={chartId ? 'Edit chart' : 'Create chart'} actions={<>
+        <Link className="rounded-lg border border-border bg-surface-raised px-3 py-2 text-sm font-semibold text-foreground no-underline" to="/charts">Cancel</Link>
+        <button className="rounded-lg bg-primary px-4 py-2 font-semibold text-background disabled:opacity-50" type="button" disabled={saving || !config.datasetId} onClick={() => void save()}>{saving ? 'Saving…' : 'Save chart'}</button>
+      </>} />
       {error && <p className="mb-4 rounded-lg border border-danger/40 bg-danger/10 p-3 text-danger" role="alert">{error}</p>}
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(330px,0.78fr)_minmax(0,1.22fr)]">
         <section className="grid gap-4 rounded-xl border border-border bg-surface p-4 sm:p-5" aria-labelledby="chart-settings">
@@ -280,6 +280,7 @@ function ChartEditorForm({ chartId, initialConfig }: { chartId?: string; initial
             {columns.some(column => column.typeName === 'date' || column.typeName === 'datetime') && <div className="grid gap-2 sm:grid-cols-2">
               <label className="grid gap-1.5 text-xs font-semibold text-muted">Time column<Select label="Time column" value={config.query.timeBucketPosition === undefined || config.query.timeBucketPosition === null ? '' : String(config.query.timeBucketPosition)} options={[{ value: '', label: 'No time bucket' }, ...columnOptions(column => column.typeName === 'date' || column.typeName === 'datetime')]} onChange={value => updateQuery({ timeBucketPosition: value ? Number(value) : null, timeBucket: value ? config.query.timeBucket ?? 'month' : null })} searchable /></label>
               <label className="grid gap-1.5 text-xs font-semibold text-muted">Time bucket<Select label="Time bucket" value={config.query.timeBucket ?? 'month'} options={['day', 'week', 'month', 'quarter', 'year'].map(value => ({ value, label: value }))} onChange={value => updateQuery({ timeBucket: value as NonNullable<DatasetAnalyticsRequest['timeBucket']> })} /></label>
+              <label className="grid gap-1.5 text-xs font-semibold text-muted">Dashboard date-range column<Select label="Dashboard date-range column" value={config.query.comparisonDatePosition === undefined || config.query.comparisonDatePosition === null ? '' : String(config.query.comparisonDatePosition)} options={[{ value: '', label: 'Automatic (first date column)' }, ...columnOptions(column => column.typeName === 'date' || column.typeName === 'datetime')]} onChange={value => updateQuery({ comparisonDatePosition: value ? Number(value) : null })} searchable /></label>
             </div>}
             <div className="grid gap-3 rounded-lg border border-border bg-surface-raised p-3">
               <div className="flex items-center justify-between"><h3 className="m-0 text-sm font-semibold text-foreground">Filters (AND)</h3><button className="rounded-md border border-border px-2 py-1 text-xs font-semibold text-foreground" type="button" onClick={() => updateQuery({ filters: [...config.query.filters, { columnPosition: columns[0]?.position ?? 0, operator: 'eq', value: '' }] })}>Add filter</button></div>
@@ -303,6 +304,7 @@ function ChartEditorForm({ chartId, initialConfig }: { chartId?: string; initial
             <div className="grid gap-3 rounded-lg border border-border bg-surface-raised p-3 sm:grid-cols-2">
               <label className="grid gap-1 text-xs font-semibold text-muted">Chart title<input className="min-h-10 rounded-lg border border-border bg-surface px-3 text-foreground" value={config.options.title} onChange={event => updateOptions({ title: event.target.value })} /></label>
               <label className="grid gap-1 text-xs font-semibold text-muted">Number format<Select label="Number format" value={config.options.numberFormat} options={['auto', 'number', 'integer', 'percent', 'currency'].map(value => ({ value, label: value }))} onChange={value => updateOptions({ numberFormat: value as ChartConfig['options']['numberFormat'] })} /></label>
+              {config.chartType === 'kpi' && <label className="grid gap-1 text-xs font-semibold text-muted">Good direction<Select label="Good direction" value={config.options.goodDirection} options={[{ value: 'up', label: 'Increase is good' }, { value: 'down', label: 'Decrease is good' }]} onChange={value => updateOptions({ goodDirection: value as 'up' | 'down' })} /></label>}
               <label className="grid gap-1 text-xs font-semibold text-muted">Color palette<Select label="Color palette" value={selectedPalette} options={Object.keys(chartPalettes).map(value => ({ value, label: `${value.charAt(0).toUpperCase()}${value.slice(1)}` }))} onChange={value => { const colors = chartPalettes[value as keyof typeof chartPalettes]; if (colors) updateOptions({ colors: [...colors] }) }} /></label>
               <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={config.options.showLegend} onChange={event => updateOptions({ showLegend: event.target.checked })} />Show legend</label>
               <label className="flex items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={config.options.stacked} onChange={event => updateOptions({ stacked: event.target.checked })} />Stack series</label>
@@ -318,7 +320,7 @@ function ChartEditorForm({ chartId, initialConfig }: { chartId?: string; initial
               : <ChartPreviewCard preview={preview.data} type={config.chartType} options={config.options} />}
         </section>
       </div>
-    </main>
+    </PageContainer>
   )
 }
 

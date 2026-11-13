@@ -73,6 +73,8 @@ Use `samples/sales.csv` for a small import, or generate a larger file with `.\sa
 - `POST /api/datasets/{id}/analytics`
 - `GET|POST /api/charts`, `GET|PUT|DELETE /api/charts/{id}`
 - `POST /api/charts/preview`, `GET /api/charts/{id}/preview`
+- `POST /api/exports/charts/{chartId}`, `POST /api/exports/dashboards/{dashboardId}`
+- `GET /api/exports`, `GET /api/exports/{id}`, `GET /api/exports/{id}/download`, `DELETE /api/exports/{id}`
 - `GET|POST /api/dashboards`, `GET|PUT|DELETE /api/dashboards/{id}`
 - `POST /api/dashboards/{id}/default`
 - `POST /api/dashboards/{id}/widgets`, `DELETE /api/dashboards/{id}/widgets/{widgetId}`
@@ -94,19 +96,30 @@ On upgrade, the `SavedChartsAndDashboards` migration copies existing `SavedRepor
 
 The queue is in memory: queued/running jobs are marked failed on restart and can be retried while their source file remains available. Failed/cancelled source files are retained for retry; successful imports remove their source file.
 
+Chart and dashboard PDF requests use the same background export queue and appear in Exports with progress and download/delete actions. Each PDF contains chart metadata, KPI comparison details when applicable, and the live query results as accessible tables. PDF jobs retain their target name and optional date range; deleting a chart or dashboard clears export references without deleting completed report files.
+
 ## Tests
 
 ```powershell
 cd D:\DataLens\backend
-dotnet test DataLens.slnx
+dotnet test DataLens.Tests\DataLens.Tests.csproj
 
 cd D:\DataLens\frontend
 npm run lint
 npm run test
 npm run build
+
+# With the Development API/LocalDB and Vite running, plus Chrome installed:
+$env:CHROME_EXECUTABLE = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+npm run e2e -- --workers=1
+
+# Backend coverage:
+cd D:\DataLens\backend
+dotnet test DataLens.Tests\DataLens.Tests.csproj --no-restore --collect:"XPlat Code Coverage"
 ```
 
 Backend integration tests use a unique LocalDB database per fixture. Set `DATALENS_TEST_CONNECTION` to a SQL Server connection string (without a database name) to use another local SQL Server instance.
+The live Playwright suite logs into the Development API, imports real CSV files, persists charts/dashboard layouts, and downloads generated PDFs. The screenshot case captures the public landing/login pages and every workspace route in light/dark themes at 1440px and 390px. Coverage from the latest backend run: **78.25% line** and **54.86% branch** (Cobertura totals: 6,866/8,774 lines and 637/1,161 branches).
 
 ## Architecture
 
@@ -119,10 +132,21 @@ flowchart LR
     API --> Health[SQL Server health check]
 ```
 
-## Scope and next steps
+## Operational limitations
 
-Some items from the broader product specification remain: previous-period KPI comparisons, dashboard-wide date filters and auto-refresh, PDF export, continuous pointer-based resize/drag on the dashboard grid, completed Exports and Settings workspaces, and Playwright E2E coverage. No benchmark results are claimed until the benchmark has been run.
+- Import/export queues are process-local. Interrupted imports are marked failed for retry; interrupted exports are marked failed and must be requested again after an API restart.
+- PDF reports currently render query data as tables rather than embedding graphical chart images.
+- QuestPDF is configured for its Community license; deployments outside that license's eligibility need an appropriate commercial license.
+- No benchmark results are claimed until the benchmark has been run.
 
 ## Screenshots
 
-Feature screenshots are stored in `docs/screenshots/before/` and `docs/screenshots/after/`. New dashboard, datasets, charts, chart-editor, exports, and settings captures cover 1440px and 390px in both themes. Chart/dashboard screenshots use deterministic mocked API responses; authenticated live-data Playwright E2E is still outstanding. See `AUDIT.md` for the visual findings.
+The live-stack screenshots in `docs/screenshots/final/` cover the landing page, sign-in, dashboard, datasets, charts, chart editor, exports, settings, and dataset details in both themes at 1440px and 390px.
+
+![Live DataLens dashboard in dark mode](docs/screenshots/final/dashboard-dark-1440.png)
+
+![Live DataLens chart library in light mode on mobile](docs/screenshots/final/charts-light-390.png)
+
+![Live DataLens exports in light mode on mobile](docs/screenshots/final/exports-light-390.png)
+
+Earlier visual audit captures remain in `docs/screenshots/before/` and `docs/screenshots/after/`; see `AUDIT.md` for the original findings.

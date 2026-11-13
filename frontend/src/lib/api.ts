@@ -81,6 +81,7 @@ export interface DatasetAnalyticsRequest {
   sortDirection?: 'asc' | 'desc'
   timeBucketPosition?: number | null
   timeBucket?: 'day' | 'week' | 'month' | 'quarter' | 'year' | null
+  comparisonDatePosition?: number | null
 }
 
 export interface DatasetAnalyticsResult {
@@ -112,6 +113,7 @@ export interface ChartVisualOptions {
   stacked: boolean
   colors?: string[] | null
   numberFormat: 'auto' | 'number' | 'integer' | 'percent' | 'currency'
+  goodDirection?: 'up' | 'down'
 }
 
 export interface SavedChart {
@@ -132,6 +134,12 @@ export interface ChartPreviewResponse {
   result: DatasetAnalyticsResult
   cacheStatus: 'HIT' | 'MISS'
   durationMilliseconds: number
+  dateFilterApplicable?: boolean
+  comparison?: {
+    previousValue: number | null
+    percentChange: number | null
+    sparkline: number[]
+  } | null
 }
 
 export interface DashboardWidget {
@@ -151,6 +159,20 @@ export interface Dashboard {
   isDefault: boolean
   widgets: DashboardWidget[]
   version: string
+}
+
+export interface ExportJob {
+  id: string
+  datasetId: string | null
+  datasetName: string
+  targetName: string
+  fileName: string
+  type: 'DatasetCsv' | 'ChartPdf' | 'DashboardPdf'
+  status: 'Queued' | 'Running' | 'Completed' | 'Failed'
+  progress: number
+  errorMessage: string | null
+  createdAt: string
+  completedAt: string | null
 }
 
 export interface ImportErrorItem {
@@ -240,7 +262,7 @@ export const api = {
     request<T>(path, { method: 'POST', body: JSON.stringify(body), signal }),
   put: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (path: string) => request<void>(path, { method: 'DELETE' }),
+  delete: (path: string, body?: unknown) => request<void>(path, { method: 'DELETE', body: body === undefined ? undefined : JSON.stringify(body) }),
   upload: (file: File, name: string, onProgress: (progress: number) => void) =>
     new Promise<DatasetUploadResult>((resolve, reject) => {
       const request = new XMLHttpRequest()
@@ -309,6 +331,32 @@ export async function downloadImportErrorsCsv(datasetId: string): Promise<void> 
   const link = document.createElement('a')
   link.href = downloadUrl
   link.download = `import-errors-${datasetId}.csv`
+  link.click()
+  URL.revokeObjectURL(downloadUrl)
+}
+
+export async function downloadExportFile(job: ExportJob): Promise<void> {
+  const headers = new Headers()
+  const token = sessionStorage.getItem('datalens.accessToken')
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  let response: Response
+  try {
+    response = await fetch(`${apiBaseUrl}/exports/${job.id}/download`, { headers })
+  } catch {
+    throw new ApiError(getApiErrorMessage(null, 0), 0)
+  }
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null)
+    throw new ApiError(
+      getApiErrorMessage(body as { detail?: string; title?: string; errors?: Record<string, string[]> } | null, response.status),
+      response.status,
+    )
+  }
+  const downloadUrl = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = downloadUrl
+  link.download = job.fileName
   link.click()
   URL.revokeObjectURL(downloadUrl)
 }

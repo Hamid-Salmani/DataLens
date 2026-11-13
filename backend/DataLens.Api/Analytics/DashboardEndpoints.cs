@@ -89,6 +89,8 @@ public static class DashboardEndpoints
             var dashboard = await db.Dashboards.SingleOrDefaultAsync(item => item.Id == id && item.OwnerId == userId, cancellationToken);
             if (dashboard is null) return Results.NotFound();
             var wasDefault = dashboard.IsDefault;
+            var linkedExports = await db.ExportJobs.Where(item => item.DashboardId == id).ToListAsync(cancellationToken);
+            foreach (var export in linkedExports) export.DashboardId = null;
             db.Dashboards.Remove(dashboard);
             await db.SaveChangesAsync(cancellationToken);
             if (wasDefault)

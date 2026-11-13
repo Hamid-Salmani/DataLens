@@ -33,12 +33,16 @@ export function ChartVisualization({
   options,
   compact = false,
   showTable = false,
+  fillContainer = false,
+  comparison,
 }: {
   result: DatasetAnalyticsResult
   type: ChartType
   options: ChartVisualOptions
   compact?: boolean
   showTable?: boolean
+  fillContainer?: boolean
+  comparison?: ChartPreviewResponse['comparison']
 }) {
   const data = transformChartData(type, result)
   const metrics = result.columns.filter(column => /^m\d+$/.test(column.key))
@@ -65,12 +69,20 @@ export function ChartVisualization({
         <strong className="text-4xl font-bold tabular-nums text-foreground">
           {valueFormatter(Number(first?.value ?? 0))}
         </strong>
-        {typeof first?.previous === 'number' && <span className="text-sm text-muted">Previous period: {valueFormatter(first.previous)}</span>}
+        {comparison && <div className="flex items-center justify-center gap-2">
+          {comparison.percentChange === null
+            ? <span className="text-sm font-semibold text-muted">New · no previous-period baseline</span>
+            : <span className={`text-sm font-semibold ${comparison.percentChange === 0 ? 'text-muted' : (comparison.percentChange > 0) === (options.goodDirection !== 'down') ? 'text-success' : 'text-danger'}`}>
+              {comparison.percentChange > 0 ? '↑' : comparison.percentChange < 0 ? '↓' : '→'} {Math.abs(comparison.percentChange).toLocaleString(undefined, { maximumFractionDigits: 1 })}% vs previous period
+            </span>}
+          {comparison.previousValue !== null && <span className="text-xs text-muted">Prev. {valueFormatter(comparison.previousValue)}</span>}
+        </div>}
+        {comparison && <KpiSparkline values={comparison.sparkline} goodDirection={options.goodDirection ?? 'up'} />}
       </div>
     )
   }
 
-  const height = compact ? 145 : 310
+  const height = fillContainer ? '100%' : compact ? 145 : 310
   const xKey = type === 'scatter' ? 'x' : 'name'
   const chart = type === 'pie' || type === 'donut'
     ? (
@@ -126,9 +138,9 @@ export function ChartVisualization({
           )
 
   return (
-    <figure className="m-0 min-w-0">
+    <figure className={`m-0 min-w-0 ${fillContainer ? 'h-full' : ''}`}>
       {options.title && !compact && <figcaption className="mb-2 text-center font-semibold text-foreground">{options.title}</figcaption>}
-      <div className="min-w-0" style={{ height }}>
+      <div className={`min-w-0 ${fillContainer ? 'h-full' : ''}`} style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">{chart}</ResponsiveContainer>
       </div>
     </figure>
@@ -159,11 +171,13 @@ export function ChartPreviewCard({
   type,
   options,
   compact = false,
+  fillContainer = false,
 }: {
   preview: ChartPreviewResponse | undefined
   type: ChartType
   options: ChartVisualOptions
   compact?: boolean
+  fillContainer?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [tableMode, setTableMode] = useState(false)
@@ -196,7 +210,7 @@ export function ChartPreviewCard({
   }
 
   return (
-    <div className="min-w-0" ref={containerRef}>
+    <div className={`min-w-0 ${fillContainer ? 'h-full' : ''}`} ref={containerRef}>
       {!compact && (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs text-muted">
@@ -210,9 +224,23 @@ export function ChartPreviewCard({
           </div>
         </div>
       )}
-      <ChartVisualization result={preview.result} type={type} options={options} compact={compact} showTable={tableMode} />
+      <ChartVisualization result={preview.result} type={type} options={options} compact={compact} showTable={tableMode} fillContainer={fillContainer} comparison={preview.comparison} />
     </div>
   )
+}
+
+function KpiSparkline({ values, goodDirection }: { values: number[]; goodDirection: 'up' | 'down' }) {
+  if (values.length < 2) return null
+  const minimum = Math.min(...values)
+  const range = Math.max(...values) - minimum || 1
+  const points = values.map((value, index) =>
+    `${(index / (values.length - 1)) * 96 + 2},${24 - ((value - minimum) / range) * 20}`,
+  ).join(' ')
+  const isUp = values.at(-1)! >= values[0]!
+  const positive = isUp === (goodDirection === 'up')
+  return <svg className={`mx-auto h-7 w-28 ${positive ? 'text-success' : 'text-danger'}`} viewBox="0 0 100 28" role="img" aria-label="Daily KPI trend">
+    <polyline points={points} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
 }
 
 function downloadBlob(blob: Blob, name: string) {
