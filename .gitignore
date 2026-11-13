@@ -1,0 +1,43 @@
+@'
+# Visual Studio / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# .NET build output
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.log
+
+# Node / frontend
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+
+# Secrets and local config
+appsettings.Development.json
+appsettings.Local.json
+.env
+.env.*
+!.env.example
+
+# Local databases and uploads
+*.mdf
+*.ldf
+*.db
+*.sqlite
+uploads/
+storage/
+
+# OS
+.DS_Store
+Thumbs.db
+'@ | Set-Content -Path .gitignore -Encoding utf8
