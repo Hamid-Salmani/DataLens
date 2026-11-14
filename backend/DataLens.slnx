@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="DataLens.Api/DataLens.Api.csproj" />
+  <Project Path="DataLens.Application/DataLens.Application.csproj" />
+  <Project Path="DataLens.Domain/DataLens.Domain.csproj" />
+  <Project Path="DataLens.Infrastructure/DataLens.Infrastructure.csproj" />
+  <Project Path="DataLens.Tests/DataLens.Tests.csproj" />
+</Solution>

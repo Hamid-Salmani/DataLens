@@ -1,0 +1,11 @@
+Customer,OrderDate,Revenue,Region,IsReturning
+Northwind,2025-01-03,1250.50,West,true
+Contoso,2025-01-04,875.00,East,false
+Adventure Works,2025-01-05,2299.99,West,true
+Fabrikam,2025-01-07,640.25,South,false
+Northwind,2025-01-11,3100.00,West,true
+Tailspin Toys,2025-01-12,415.75,North,false
+Contoso,2025-01-15,1820.00,East,true
+Fabrikam,2025-01-18,930.40,South,true
+Adventure Works,2025-01-21,1575.25,West,false
+Tailspin Toys,2025-01-24,720.00,North,true
